@@ -110,7 +110,7 @@
             border: 1px solid #4fa04f;
         }
 
-        /* category tabs - pill style */
+        /* category tabs - pill style - now with active indicator */
         .scroll-tabs {
             display: flex;
             gap: 0.4rem;
@@ -118,6 +118,12 @@
             margin-bottom: 1.2rem;
             padding-bottom: 0.2rem;
             scrollbar-width: none;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            background: #daf1da;
+            padding-top: 0.3rem;
+            padding-bottom: 0.5rem;
         }
         .scroll-tabs::-webkit-scrollbar { display: none; }
 
@@ -141,17 +147,12 @@
             color: white;
         }
 
-        /* bundle sections */
-        .bundles-grid {
-            display: flex;
-            flex-direction: column;
-            gap: 1.2rem;
-        }
-
+        /* bundle sections with smooth scroll target */
         .category-section {
             display: flex;
             flex-direction: column;
             gap: 0.5rem;
+            scroll-margin-top: 60px;
         }
 
         .category-header {
@@ -191,7 +192,7 @@
             gap: 0.6rem;
         }
 
-        /* MORE SQUARISH CARDS - 12px radius instead of 24px */
+        /* MORE SQUARISH CARDS - 12px radius */
         .bundle-card {
             background: #ffffff;
             border-radius: 12px;
@@ -206,16 +207,45 @@
         .bundle-card.popular { border-left: 5px solid #f4b740; }
         .bundle-card.featured { border-left: 5px solid #1d541d; }
 
+        /* COLORFUL BADGES - bright and eye-catching */
         .bundle-badge {
             position: absolute;
             top: 0.4rem;
             right: 0.4rem;
+            font-size: 0.55rem;
+            font-weight: 800;
+            padding: 0.2rem 0.5rem;
+            border-radius: 20px;
+            letter-spacing: 0.3px;
+            text-transform: uppercase;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        /* POPULAR badge - vibrant orange */
+        .bundle-badge.popular-badge {
+            background: #ff8c42;
+            color: white;
+            border: 1px solid #e07a2c;
+        }
+
+        /* HOT badge - bright red */
+        .bundle-badge.hot-badge {
+            background: #e63946;
+            color: white;
+            border: 1px solid #c92a36;
+        }
+
+        /* VALUE badge - electric blue */
+        .bundle-badge.value-badge {
+            background: #4361ee;
+            color: white;
+            border: 1px solid #3651c9;
+        }
+
+        /* default badge (fallback) */
+        .bundle-badge:not(.popular-badge):not(.hot-badge):not(.value-badge) {
             background: #1d541d;
             color: white;
-            font-size: 0.55rem;
-            font-weight: 700;
-            padding: 0.15rem 0.45rem;
-            border-radius: 20px;
         }
 
         .bundle-title {
@@ -506,9 +536,9 @@
             </div>
         </div>
 
-        <!-- Category Tabs -->
+        <!-- Category Tabs - now for scrolling -->
         <div class="scroll-tabs" id="tabContainer">
-            <button class="tab-pill active" data-category="all">All Bundles</button>
+            <button class="tab-pill" data-category="all">All Bundles</button>
             <button class="tab-pill" data-category="daily">Daily</button>
             <button class="tab-pill" data-category="weekly">Weekly</button>
             <button class="tab-pill" data-category="monthly">Monthly</button>
@@ -538,6 +568,7 @@
     // Bundle data with 14 days unlimited
     const bundleData = {
         daily: {
+            id: 'daily',
             title: 'Daily Bundles',
             icon: 'fas fa-sun',
             subtitle: 'Perfect for short-term usage',
@@ -547,6 +578,7 @@
             ]
         },
         weekly: {
+            id: 'weekly',
             title: 'Weekly Bundles',
             icon: 'fas fa-calendar-week',
             subtitle: 'Ideal for weekly browsing',
@@ -558,6 +590,7 @@
             ]
         },
         monthly: {
+            id: 'monthly',
             title: 'Monthly Bundles',
             icon: 'fas fa-calendar-alt',
             subtitle: 'Best value for regular users',
@@ -569,6 +602,7 @@
             ]
         },
         unlimited: {
+            id: 'unlimited',
             title: 'Unlimited Bundles',
             icon: 'fas fa-infinity',
             subtitle: 'Truly unlimited',
@@ -591,6 +625,9 @@
     function initPage() {
         renderAllBundles();
         setupEventListeners();
+        
+        // Set "All" as active by default
+        document.querySelector('[data-category="all"]').classList.add('active');
     }
 
     function renderAllBundles() {
@@ -599,6 +636,7 @@
         for (const [categoryKey, category] of Object.entries(bundleData)) {
             const categorySection = document.createElement('div');
             categorySection.className = 'category-section';
+            categorySection.id = `section-${categoryKey}`;
             categorySection.dataset.category = categoryKey;
             
             const categoryHeader = document.createElement('div');
@@ -620,8 +658,14 @@
                 if (bundle.badge === 'POPULAR') bundleCard.classList.add('popular');
                 if (bundle.badge === 'VALUE') bundleCard.classList.add('featured');
                 
+                // Determine badge class for colorful display
+                let badgeClass = '';
+                if (bundle.badge === 'POPULAR') badgeClass = 'popular-badge';
+                else if (bundle.badge === 'HOT') badgeClass = 'hot-badge';
+                else if (bundle.badge === 'VALUE') badgeClass = 'value-badge';
+                
                 bundleCard.innerHTML = `
-                    ${bundle.badge ? `<div class="bundle-badge">${bundle.badge}</div>` : ''}
+                    ${bundle.badge ? `<div class="bundle-badge ${badgeClass}">${bundle.badge}</div>` : ''}
                     <div class="bundle-title">${bundle.title}</div>
                     <div class="bundle-subtitle">${bundle.subtitle}</div>
                     <div class="bundle-details">
@@ -650,10 +694,29 @@
     function setupEventListeners() {
         tabs.forEach(tab => {
             tab.addEventListener('click', () => {
+                // Update active tab
                 tabs.forEach(t => t.classList.remove('active'));
                 tab.classList.add('active');
+                
                 const category = tab.dataset.category;
-                filterBundlesByCategory(category);
+                
+                // Scroll to section instead of filtering
+                if (category === 'all') {
+                    // Scroll to top smoothly
+                    window.scrollTo({
+                        top: 0,
+                        behavior: 'smooth'
+                    });
+                } else {
+                    // Scroll to specific section
+                    const section = document.getElementById(`section-${category}`);
+                    if (section) {
+                        section.scrollIntoView({ 
+                            behavior: 'smooth',
+                            block: 'start'
+                        });
+                    }
+                }
             });
         });
         
@@ -670,17 +733,40 @@
                 });
             }
         });
-    }
 
-    function filterBundlesByCategory(category) {
-        const categorySections = document.querySelectorAll('.category-section');
-        if (category === 'all') {
-            categorySections.forEach(section => section.style.display = 'flex');
-        } else {
-            categorySections.forEach(section => {
-                section.style.display = section.dataset.category === category ? 'flex' : 'none';
-            });
-        }
+        // Optional: Highlight active tab based on scroll position
+        window.addEventListener('scroll', () => {
+            const sections = ['daily', 'weekly', 'monthly', 'unlimited'];
+            const scrollPosition = window.scrollY + 100; // offset for sticky tabs
+            
+            for (const sectionId of sections) {
+                const section = document.getElementById(`section-${sectionId}`);
+                if (section) {
+                    const sectionTop = section.offsetTop;
+                    const sectionBottom = sectionTop + section.offsetHeight;
+                    
+                    if (scrollPosition >= sectionTop && scrollPosition < sectionBottom) {
+                        tabs.forEach(t => {
+                            t.classList.remove('active');
+                            if (t.dataset.category === sectionId) {
+                                t.classList.add('active');
+                            }
+                        });
+                        break;
+                    }
+                }
+            }
+            
+            // Check if at top for "All"
+            if (window.scrollY < 100) {
+                tabs.forEach(t => {
+                    t.classList.remove('active');
+                    if (t.dataset.category === 'all') {
+                        t.classList.add('active');
+                    }
+                });
+            }
+        });
     }
 
     function validatePhoneNumber(phone) {
