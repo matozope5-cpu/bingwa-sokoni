@@ -895,10 +895,16 @@
                 attempts++;
                 try {
                     const result = await verifyPayment(reference);
-                    if (result.success && (result.status === 'SUCCESS' || result.status === 'COMPLETED')) {
+                    // Check transaction status from the API
+                    if (result.status === 'SUCCESS' || result.status === 'COMPLETED') {
                         resolve({ success: true, data: result.data });
                         return;
+                    } else if (['FAILED', 'CANCELLED', 'TIMEOUT'].includes(result.status)) {
+                        // Terminal failure – stop polling immediately
+                        resolve({ success: false, error: `Payment ${result.status.toLowerCase()}` });
+                        return;
                     }
+                    // Otherwise (PENDING, PROCESSING, etc.) continue polling
                     if (attempts >= maxAttempts) {
                         resolve({ success: false, error: 'Payment timeout' });
                         return;
