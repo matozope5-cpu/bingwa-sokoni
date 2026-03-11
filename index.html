@@ -7,6 +7,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://cdn.jsdelivr.net/npm/sweetalert2@11.7.3/dist/sweetalert2.min.css" rel="stylesheet">
     <style>
+        /* (styles remain exactly as before) */
         * {
             margin: 0;
             padding: 0;
@@ -802,7 +803,7 @@
                         </label>
                         <div class="phone-input-group">
                             <div class="phone-prefix">+254</div>
-                            <input type="tel" class="phone-input" id="swal-phone" placeholder="712 345 678" maxlength="11">
+                            <input type="tel" class="phone-input" id="swal-phone" placeholder="0712345678" maxlength="10">
                         </div>
                         <p class="input-note">Where to send the data bundle</p>
                     </div>
@@ -852,10 +853,8 @@
             const phoneInput = document.getElementById('swal-phone');
             if (phoneInput) {
                 phoneInput.addEventListener('input', function(e) {
-                    let value = this.value.replace(/\D/g, '');
-                    if (value.length > 3) value = value.slice(0,3) + ' ' + value.slice(3);
-                    if (value.length > 7) value = value.slice(0,7) + ' ' + value.slice(7);
-                    this.value = value.slice(0,11);
+                    // Allow only digits, limit to 10 characters
+                    this.value = this.value.replace(/\D/g, '').slice(0, 10);
                 });
                 phoneInput.focus();
             }
