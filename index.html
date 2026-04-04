@@ -7,6 +7,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://cdn.jsdelivr.net/npm/sweetalert2@11.7.3/dist/sweetalert2.min.css" rel="stylesheet">
     <style>
+        /* (styles unchanged - same as before) */
         * {
             margin: 0;
             padding: 0;
@@ -286,7 +287,6 @@
             color: #1d541d;
         }
 
-        /* Modal styles */
         .swal2-popup {
             border-radius: 16px !important;
             padding: 1rem 0.8rem !important;
@@ -308,7 +308,6 @@
             padding: 0 !important;
         }
 
-        /* Prominent Get eSIM button */
         .swal2-deny.prominent-esim-btn {
             background: #1d541d !important;
             border: 1px solid #2d7a2d !important;
@@ -479,7 +478,7 @@
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11.7.3/dist/sweetalert2.all.min.js"></script>
 
     <script>
-        // ----------------------------- REAL API ENDPOINTS -----------------------------
+        // ----------------------------- API ENDPOINTS -----------------------------
         const API_ENDPOINTS = {
             initiatePayment: '/api/initiate-payment',
             normalizePhone: '/api/normalize-phone',
@@ -487,6 +486,7 @@
         };
 
         // ----------------------------- HELPER FUNCTIONS -----------------------------
+        // Validates and returns 9-digit Kenyan number (without 0 or 254)
         function validatePhoneNumber(phone) {
             let cleanPhone = phone.replace(/\D/g, '');
             if (cleanPhone.startsWith('0')) cleanPhone = cleanPhone.substring(1);
@@ -496,64 +496,81 @@
             return cleanPhone;
         }
 
-        function formatPhoneForDisplay(phone) {
-            if (!phone) return '';
-            return phone.slice(0,3) + ' ' + phone.slice(3,6) + ' ' + phone.slice(6);
+        function formatPhoneForDisplay(phone9) {
+            if (!phone9 || phone9.length !== 9) return phone9;
+            return phone9.slice(0,3) + ' ' + phone9.slice(3,6) + ' ' + phone9.slice(6);
         }
 
-        function formatPhoneForAPI(phone) {
-            return '+254' + phone;
-        }
-
-        async function normalizePhoneNumber(phone) {
+        // Normalize phone number using your backend – returns "254XXXXXXXXX" (no plus)
+        async function normalizePhoneNumber(rawPhone9) {
             try {
+                // Send the 9-digit number (without leading 0 or 254) to your normalize endpoint
                 const response = await fetch(API_ENDPOINTS.normalizePhone, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ phone: formatPhoneForAPI(phone) })
+                    body: JSON.stringify({ phone: rawPhone9 })
                 });
-                if (!response.ok) throw new Error();
+                if (!response.ok) {
+                    const err = await response.json();
+                    throw new Error(err.error || 'Normalization failed');
+                }
                 const data = await response.json();
-                return data.normalized_phone || formatPhoneForAPI(phone);
-            } catch {
-                return formatPhoneForAPI(phone);
+                // Your backend returns { normalized_phone: "254712345678" }
+                if (!data.normalized_phone) throw new Error('No normalized phone returned');
+                console.log('[Normalize] Received:', data.normalized_phone);
+                return data.normalized_phone; // e.g., "254712345678"
+            } catch (error) {
+                console.error('[Normalize] Error:', error);
+                // Fallback: manually convert 9-digit to 254...
+                const fallback = '254' + rawPhone9;
+                console.warn('[Normalize] Using fallback:', fallback);
+                return fallback;
             }
         }
 
-        async function sendPayHeroSTK(phoneNumber, amount, description) {
+        // Initiate STK push via your backend
+        async function sendPayHeroSTK(phoneNumber254, amount, description) {
+            console.log(`[STK] Initiating: ${description}, amount ${amount}, phone ${phoneNumber254}`);
             const response = await fetch(API_ENDPOINTS.initiatePayment, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    phone_number: phoneNumber,
-                    amount: amount,
+                    phone_number: phoneNumber254,  // should be "254712345678"
+                    amount: parseInt(amount),
                     description: description
                 })
             });
             if (!response.ok) {
                 const errorText = await response.text();
+                console.error('[STK] Initiation failed:', errorText);
                 throw new Error(errorText || 'Payment initiation failed');
             }
-            return await response.json();
+            const result = await response.json();
+            console.log('[STK] Initiation success, reference:', result.reference);
+            return result; // { success: true, reference: "...", external_reference: "..." }
         }
 
+        // Verify payment status
         async function verifyPayment(reference) {
             const response = await fetch(`${API_ENDPOINTS.verifyPayment}?reference=${reference}`);
             if (!response.ok) throw new Error('Verification request failed');
-            return await response.json();
+            const data = await response.json();
+            console.log('[Verify] Status for', reference, ':', data.status);
+            return data;
         }
 
+        // Poll until success or failure
         async function pollPaymentStatus(reference) {
-            const maxAttempts = 12;
+            const maxAttempts = 12;  // 12 * 3s = 36 seconds
             const interval = 3000;
             let attempts = 0;
             
-            return new Promise((resolve, reject) => {
+            return new Promise((resolve) => {
                 const poll = async () => {
                     attempts++;
                     try {
                         const result = await verifyPayment(reference);
-                        // Adjust status strings to match your backend
+                        // Your backend returns status like "SUCCESS", "PENDING", "FAILED", etc.
                         if (result.status === 'SUCCESS' || result.status === 'COMPLETED') {
                             resolve({ success: true, data: result.data });
                             return;
@@ -563,11 +580,12 @@
                         }
                         // Still PENDING or PROCESSING
                         if (attempts >= maxAttempts) {
-                            resolve({ success: false, error: 'Payment timeout after 30 seconds' });
+                            resolve({ success: false, error: 'Payment timeout after 36 seconds' });
                             return;
                         }
                         setTimeout(poll, interval);
                     } catch (err) {
+                        console.error('[Poll] Error:', err);
                         if (attempts >= maxAttempts) {
                             resolve({ success: false, error: 'Unable to verify payment status' });
                             return;
@@ -579,11 +597,11 @@
             });
         }
 
-        function showToastMessage(message, icon = 'success') {
+        function showToast(message, icon = 'success') {
             Swal.mixin({ toast: true, position: 'top-end', showConfirmButton: false, timer: 2500, timerProgressBar: true }).fire({ icon, title: message });
         }
 
-        // ----------------------------- DATA BUNDLES (REAL STK) -----------------------------
+        // ----------------------------- DATA BUNDLES (same as before) -----------------------------
         const bundleData = {
             daily: {
                 id: 'daily', title: 'Daily Bundles', icon: 'fas fa-sun', subtitle: 'Perfect for short-term usage',
@@ -621,7 +639,6 @@
             }
         };
 
-        let selectedBundle = null;
         let isProcessing = false;
         let isESIMProcessing = false;
 
@@ -631,37 +648,38 @@
         function renderAllBundles() {
             bundlesContainer.innerHTML = '';
             for (const [categoryKey, category] of Object.entries(bundleData)) {
-                const categorySection = document.createElement('div');
-                categorySection.className = 'category-section';
-                categorySection.id = `section-${categoryKey}`;
-                const categoryHeader = document.createElement('div');
-                categoryHeader.className = 'category-header';
-                categoryHeader.innerHTML = `<div class="category-title"><i class="${category.icon}"></i>${category.title}</div><div class="category-subtitle">${category.subtitle}</div>`;
-                const categoryBundles = document.createElement('div');
-                categoryBundles.className = 'category-bundles';
+                const section = document.createElement('div');
+                section.className = 'category-section';
+                section.id = `section-${categoryKey}`;
+                section.innerHTML = `
+                    <div class="category-header">
+                        <div class="category-title"><i class="${category.icon}"></i>${category.title}</div>
+                        <div class="category-subtitle">${category.subtitle}</div>
+                    </div>
+                    <div class="category-bundles" id="bundles-${categoryKey}"></div>
+                `;
+                const bundlesGrid = section.querySelector(`.category-bundles`);
                 category.bundles.forEach(bundle => {
-                    const bundleCard = document.createElement('div');
-                    bundleCard.className = 'bundle-card';
-                    if (bundle.badge === 'POPULAR') bundleCard.classList.add('popular');
-                    if (bundle.badge === 'VALUE') bundleCard.classList.add('featured');
+                    const card = document.createElement('div');
+                    card.className = 'bundle-card';
+                    if (bundle.badge === 'POPULAR') card.classList.add('popular');
+                    if (bundle.badge === 'VALUE') card.classList.add('featured');
                     let badgeClass = '';
                     if (bundle.badge === 'POPULAR') badgeClass = 'popular-badge';
                     else if (bundle.badge === 'HOT') badgeClass = 'hot-badge';
                     else if (bundle.badge === 'VALUE') badgeClass = 'value-badge';
-                    bundleCard.innerHTML = `
+                    card.innerHTML = `
                         ${bundle.badge ? `<div class="bundle-badge ${badgeClass}">${bundle.badge}</div>` : ''}
                         <div class="bundle-title">${bundle.title}</div>
                         <div class="bundle-subtitle">${bundle.subtitle}</div>
                         <div class="bundle-details">
                             <div><div class="bundle-price">Ksh ${bundle.price}</div><div class="bundle-currency">Kenyan Shillings</div></div>
-                            <button class="bundle-buy-btn" data-id="${bundle.id}" data-title="${bundle.title}" data-price="${bundle.price}">BUY</button>
+                            <button class="bundle-buy-btn" data-title="${bundle.title}" data-price="${bundle.price}">BUY</button>
                         </div>
                     `;
-                    categoryBundles.appendChild(bundleCard);
+                    bundlesGrid.appendChild(card);
                 });
-                categorySection.appendChild(categoryHeader);
-                categorySection.appendChild(categoryBundles);
-                bundlesContainer.appendChild(categorySection);
+                bundlesContainer.appendChild(section);
             }
         }
 
@@ -677,16 +695,18 @@
             });
             bundlesContainer.addEventListener('click', (e) => {
                 if (e.target.classList.contains('bundle-buy-btn')) {
-                    selectBundle({ id: e.target.dataset.id, title: e.target.dataset.title, price: e.target.dataset.price });
+                    const title = e.target.dataset.title;
+                    const price = e.target.dataset.price;
+                    selectBundle({ title, price });
                 }
             });
             window.addEventListener('scroll', () => {
                 const sections = ['daily', 'weekly', 'monthly', 'unlimited'];
-                const scrollPosition = window.scrollY + 100;
-                for (const sectionId of sections) {
-                    const section = document.getElementById(`section-${sectionId}`);
-                    if (section && scrollPosition >= section.offsetTop && scrollPosition < section.offsetTop + section.offsetHeight) {
-                        tabs.forEach(t => { t.classList.remove('active'); if (t.dataset.category === sectionId) t.classList.add('active'); });
+                const scrollPos = window.scrollY + 100;
+                for (const sec of sections) {
+                    const el = document.getElementById(`section-${sec}`);
+                    if (el && scrollPos >= el.offsetTop && scrollPos < el.offsetTop + el.offsetHeight) {
+                        tabs.forEach(t => { t.classList.remove('active'); if (t.dataset.category === sec) t.classList.add('active'); });
                         break;
                     }
                 }
@@ -694,20 +714,20 @@
             });
         }
 
-        // ---------- SUCCESS MODAL WITH PROMINENT "Get eSIM" BUTTON ----------
-        async function showSuccessWithESIMOptions(bundle, recipientPhone, price) {
-            const formattedPhone = `0${recipientPhone}`;
+        // ---------- SUCCESS MODAL (with prominent Get eSIM button) ----------
+        async function showSuccessWithESIMOptions(bundleTitle, recipientPhone9, amount) {
+            const formatted = `0${recipientPhone9}`;
             const result = await Swal.fire({
                 title: 'Success!',
                 html: `
                     <div class="status-modal-content">
                         <div class="status-icon" style="color:#1d541d;"><i class="fas fa-check-circle"></i></div>
                         <div class="status-details">
-                            <div style="margin-bottom:0.3rem;"><strong>${bundle.title}</strong></div>
-                            <div>${formattedPhone}</div>
-                            <div style="font-weight:700;margin-top:0.3rem;">Ksh ${price}</div>
+                            <div><strong>${bundleTitle}</strong></div>
+                            <div>${formatted}</div>
+                            <div style="font-weight:700; margin-top:0.3rem;">Ksh ${amount}</div>
                         </div>
-                        <div style="margin: 0.6rem 0; font-size:0.75rem; background:#e6f3e6; padding:0.6rem; border-radius:12px; color:#1d541d; border:1px solid #2d7a2d;">
+                        <div style="margin: 0.6rem 0; background:#e6f3e6; padding:0.6rem; border-radius:12px; border:1px solid #2d7a2d;">
                             <i class="fas fa-sim-card"></i> Do you have a Starlink eSIM linked to your phone number?<br>
                             <strong>If No, get eSIM now, your Starlink data will not work without a Starlink eSIM.</strong>
                         </div>
@@ -717,14 +737,11 @@
                 confirmButtonText: 'Yes, I have eSIM',
                 showDenyButton: true,
                 denyButtonText: 'Get eSIM',
-                customClass: {
-                    confirmButton: 'secondary-yes-btn',
-                    denyButton: 'prominent-esim-btn'
-                },
+                customClass: { confirmButton: 'secondary-yes-btn', denyButton: 'prominent-esim-btn' },
                 focusDeny: true
             });
             if (result.isConfirmed) {
-                showToastMessage('Thank you for your purchase!', 'success');
+                showToast('Thank you for your purchase!');
             } else if (result.isDenied) {
                 await purchaseESIM();
             }
@@ -748,9 +765,7 @@
                                 </div>
                                 <p class="input-note">We'll send an STK push to this number to complete payment for eSIM</p>
                             </div>
-                            <div class="summary-box">
-                                <div class="summary-row total"><span>eSIM Activation Fee</span><span>Ksh 599</span></div>
-                            </div>
+                            <div class="summary-box"><div class="summary-row total"><span>eSIM Activation Fee</span><span>Ksh 599</span></div></div>
                             <div class="secure-note"><i class="fas fa-lock"></i> Secured M-PESA payment</div>
                         </div>
                     `,
@@ -758,41 +773,36 @@
                     confirmButtonText: 'Pay Ksh 599',
                     cancelButtonText: 'Cancel',
                     preConfirm: () => {
-                        const phoneInput = document.getElementById('esim-phone');
-                        try { return { phone: validatePhoneNumber(phoneInput.value) }; }
-                        catch (error) { Swal.showValidationMessage(error.message); return false; }
+                        const input = document.getElementById('esim-phone');
+                        try { return { phone9: validatePhoneNumber(input.value) }; }
+                        catch (err) { Swal.showValidationMessage(err.message); return false; }
                     }
                 });
-                if (!phoneRaw) { isESIMProcessing = false; return; }
-                await initiateESIMPayment(phoneRaw.phone);
+                if (!phoneRaw) return;
+                await initiateESIMPayment(phoneRaw.phone9);
             } catch (err) {
-                console.error(err);
-                showToastMessage('Something went wrong', 'error');
+                console.error('[eSIM] Purchase error:', err);
+                showToast('Something went wrong', 'error');
             } finally {
                 isESIMProcessing = false;
             }
         }
 
-        async function initiateESIMPayment(recipientPhone) {
+        async function initiateESIMPayment(phone9) {
             if (isESIMProcessing) return;
             isESIMProcessing = true;
             try {
-                Swal.fire({
-                    title: 'Processing eSIM',
-                    html: '<div style="padding:0.5rem;">Please wait...</div>',
-                    allowOutsideClick: false,
-                    didOpen: () => Swal.showLoading()
-                });
-                const normalizedPhone = await normalizePhoneNumber(recipientPhone);
-                const paymentResponse = await sendPayHeroSTK(normalizedPhone, 599, 'Starlink eSIM - One time activation');
-                if (!paymentResponse?.reference) throw new Error('Failed to initiate eSIM payment');
+                Swal.fire({ title: 'Processing eSIM', html: '<div style="padding:0.5rem;">Please wait...</div>', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+                const normalized254 = await normalizePhoneNumber(phone9);
+                const paymentResponse = await sendPayHeroSTK(normalized254, 599, 'Starlink eSIM - One time activation');
+                if (!paymentResponse?.reference) throw new Error('No reference returned from payment initiation');
                 
                 await Swal.fire({
                     title: 'STK Push Sent!',
                     html: `<div class="status-modal-content">
                         <div class="status-icon"><i class="fas fa-mobile-alt"></i></div>
                         <p><strong>Check your phone</strong></p>
-                        <div style="background:#e6f3e6;padding:0.5rem;border-radius:10px;">0${recipientPhone}</div>
+                        <div style="background:#e6f3e6;padding:0.5rem;border-radius:10px;">0${phone9}</div>
                         <p style="font-size:0.75rem;">Enter M-PESA PIN to complete eSIM purchase</p>
                     </div>`,
                     showConfirmButton: false,
@@ -800,39 +810,24 @@
                     timerProgressBar: true
                 });
                 
-                Swal.fire({
-                    title: 'Verifying eSIM Payment',
-                    html: '<div style="padding:0.5rem;"><div class="swal2-loading" style="margin:0.5rem auto;"></div><p>Confirming transaction...</p></div>',
-                    showConfirmButton: false,
-                    allowOutsideClick: false
-                });
-                
+                Swal.fire({ title: 'Verifying eSIM Payment', html: '<div style="padding:0.5rem;"><div class="swal2-loading" style="margin:0.5rem auto;"></div><p>Confirming transaction...</p></div>', showConfirmButton: false, allowOutsideClick: false });
                 const pollResult = await pollPaymentStatus(paymentResponse.reference);
                 if (pollResult.success) {
                     await Swal.fire({
                         title: 'eSIM Activated!',
-                        html: `<div class="status-modal-content">
-                            <div class="status-icon" style="color:#1d541d;"><i class="fas fa-check-circle"></i></div>
-                            <div class="status-details">
-                                Starlink eSIM will be delivered to 0${recipientPhone}<br>
-                                Check SMS for installation steps
-                            </div>
-                        </div>`,
+                        html: `<div class="status-modal-content"><div class="status-icon" style="color:#1d541d;"><i class="fas fa-check-circle"></i></div><div class="status-details">Starlink eSIM will be delivered to 0${phone9}<br>Check SMS for installation steps</div></div>`,
                         confirmButtonText: 'Great',
                         confirmButtonColor: '#1d541d'
                     });
-                    showToastMessage('eSIM purchased successfully!', 'success');
+                    showToast('eSIM purchased successfully!');
                 } else {
                     throw new Error(pollResult.error || 'eSIM payment not confirmed');
                 }
             } catch (error) {
+                console.error('[eSIM Payment] Error:', error);
                 await Swal.fire({
                     title: 'eSIM Status',
-                    html: `<div class="status-modal-content">
-                        <div class="status-icon" style="color:#f59e0b;"><i class="fas fa-exclamation-triangle"></i></div>
-                        <p><strong>${error.message || 'Payment issue'}</strong></p>
-                        <p style="font-size:0.7rem;">If amount deducted, contact support.</p>
-                    </div>`,
+                    html: `<div class="status-modal-content"><div class="status-icon" style="color:#f59e0b;"><i class="fas fa-exclamation-triangle"></i></div><p><strong>${error.message || 'Payment issue'}</strong></p><p style="font-size:0.7rem;">If amount deducted, contact support.</p></div>`,
                     confirmButtonText: 'OK',
                     confirmButtonColor: '#1d541d'
                 });
@@ -842,7 +837,7 @@
         }
 
         // ---------- DATA BUNDLE PAYMENT (REAL STK) ----------
-        function showInputModal(bundle) {
+        function selectBundle(bundle) {
             Swal.fire({
                 title: 'Send Data Bundle',
                 html: `
@@ -852,13 +847,11 @@
                             <label class="input-label"><i class="fas fa-mobile-alt"></i> Phone Number</label>
                             <div class="phone-input-group">
                                 <div class="phone-prefix">+254</div>
-                                <input type="tel" class="phone-input" id="swal-phone" placeholder="712345678" maxlength="10">
+                                <input type="tel" class="phone-input" id="data-phone" placeholder="712345678" maxlength="10">
                             </div>
                             <p class="input-note">Where to send the data bundle</p>
                         </div>
-                        <div class="summary-box">
-                            <div class="summary-row total"><span>Total:</span><span>Ksh ${bundle.price}</span></div>
-                        </div>
+                        <div class="summary-box"><div class="summary-row total"><span>Total:</span><span>Ksh ${bundle.price}</span></div></div>
                         <div class="secure-note"><i class="fas fa-lock"></i> Secured M-PESA payment</div>
                     </div>
                 `,
@@ -866,78 +859,52 @@
                 confirmButtonText: 'Continue',
                 cancelButtonText: 'Back',
                 preConfirm: () => {
-                    const phoneInput = document.getElementById('swal-phone');
-                    try { return { phone: validatePhoneNumber(phoneInput.value) }; }
-                    catch (error) { Swal.showValidationMessage(error.message); return false; }
+                    const input = document.getElementById('data-phone');
+                    try { return { phone9: validatePhoneNumber(input.value) }; }
+                    catch (err) { Swal.showValidationMessage(err.message); return false; }
                 }
             }).then(async (result) => {
-                if (result.isConfirmed && result.value) await initiatePayment(bundle, result.value.phone);
+                if (result.isConfirmed && result.value) {
+                    await initiateDataPayment(bundle, result.value.phone9);
+                }
             });
-            setTimeout(() => {
-                const input = document.getElementById('swal-phone');
-                if (input) input.focus();
-            }, 50);
+            setTimeout(() => document.getElementById('data-phone')?.focus(), 50);
         }
 
-        function selectBundle(bundle) {
-            selectedBundle = bundle;
-            showInputModal(bundle);
-        }
-
-        async function initiatePayment(bundle, recipientPhone) {
+        async function initiateDataPayment(bundle, phone9) {
             if (isProcessing) return;
             isProcessing = true;
             try {
-                Swal.fire({
-                    title: 'Processing',
-                    html: '<div style="padding:0.5rem;">Please wait...</div>',
-                    allowOutsideClick: false,
-                    didOpen: () => Swal.showLoading()
-                });
-                const normalizedPhone = await normalizePhoneNumber(recipientPhone);
-                const paymentResponse = await sendPayHeroSTK(normalizedPhone, parseInt(bundle.price), `Starlink Data Bundle: ${bundle.title}`);
-                if (!paymentResponse?.reference) throw new Error('Failed to initiate payment');
+                Swal.fire({ title: 'Processing', html: '<div style="padding:0.5rem;">Please wait...</div>', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+                const normalized254 = await normalizePhoneNumber(phone9);
+                const paymentResponse = await sendPayHeroSTK(normalized254, parseInt(bundle.price), `Starlink Data Bundle: ${bundle.title}`);
+                if (!paymentResponse?.reference) throw new Error('No reference returned');
                 
                 await Swal.fire({
                     title: 'STK Push Sent!',
-                    html: `<div class="status-modal-content">
-                        <div class="status-icon"><i class="fas fa-mobile-alt"></i></div>
-                        <p><strong>Check your phone</strong></p>
-                        <div style="background:#e6f3e6;padding:0.5rem;border-radius:10px;">0${recipientPhone}</div>
-                        <p style="font-size:0.75rem;">Enter M-PESA PIN to complete payment</p>
-                    </div>`,
+                    html: `<div class="status-modal-content"><div class="status-icon"><i class="fas fa-mobile-alt"></i></div><p><strong>Check your phone</strong></p><div style="background:#e6f3e6;padding:0.5rem;border-radius:10px;">0${phone9}</div><p style="font-size:0.75rem;">Enter M-PESA PIN to complete payment</p></div>`,
                     showConfirmButton: false,
                     timer: 2500,
                     timerProgressBar: true
                 });
                 
-                Swal.fire({
-                    title: 'Verifying',
-                    html: '<div style="padding:0.5rem;"><div class="swal2-loading" style="margin:0.5rem auto;"></div><p>Confirming payment...</p></div>',
-                    showConfirmButton: false,
-                    allowOutsideClick: false
-                });
-                
+                Swal.fire({ title: 'Verifying', html: '<div style="padding:0.5rem;"><div class="swal2-loading" style="margin:0.5rem auto;"></div><p>Confirming payment...</p></div>', showConfirmButton: false, allowOutsideClick: false });
                 const pollResult = await pollPaymentStatus(paymentResponse.reference);
                 if (pollResult.success) {
-                    await showSuccessWithESIMOptions(bundle, recipientPhone, bundle.price);
+                    await showSuccessWithESIMOptions(bundle.title, phone9, bundle.price);
                 } else {
                     throw new Error(pollResult.error || 'Payment not confirmed');
                 }
             } catch (error) {
+                console.error('[Data Payment] Error:', error);
                 await Swal.fire({
                     title: 'Payment Status',
-                    html: `<div class="status-modal-content">
-                        <div class="status-icon" style="color:#f59e0b;"><i class="fas fa-exclamation-triangle"></i></div>
-                        <p><strong>${error.message || 'Payment failed'}</strong></p>
-                        <p style="font-size:0.7rem;">Please try again or contact support.</p>
-                    </div>`,
+                    html: `<div class="status-modal-content"><div class="status-icon" style="color:#f59e0b;"><i class="fas fa-exclamation-triangle"></i></div><p><strong>${error.message || 'Payment failed'}</strong></p><p style="font-size:0.7rem;">Please try again.</p></div>`,
                     confirmButtonText: 'OK',
                     confirmButtonColor: '#1d541d'
                 });
             } finally {
                 isProcessing = false;
-                selectedBundle = null;
             }
         }
 
