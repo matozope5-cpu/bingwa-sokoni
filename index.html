@@ -7,7 +7,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://cdn.jsdelivr.net/npm/sweetalert2@11.7.3/dist/sweetalert2.min.css" rel="stylesheet">
     <style>
-        /* (styles remain as before, no visual regressions) */
+        /* Base styles (unchanged structure) */
         * {
             margin: 0;
             padding: 0;
@@ -309,6 +309,26 @@
             padding: 0 !important;
         }
 
+        /* custom button prominence: make Get eSIM (deny) primary, Yes button secondary */
+        .swal2-deny.prominent-esim-btn {
+            background: #1d541d !important;
+            border: 1px solid #2d7a2d !important;
+            color: white !important;
+            font-weight: 700 !important;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+            order: 1;
+        }
+        .swal2-confirm.secondary-yes-btn {
+            background: #e6f3e6 !important;
+            border: 1px solid #2d7a2d !important;
+            color: #1d541d !important;
+            font-weight: 600 !important;
+        }
+        /* ensure deny button appears more prominent (larger padding optional) */
+        .prominent-esim-btn {
+            transform: scale(1.02);
+        }
+
         .modal-content {
             text-align: left;
             width: 100%;
@@ -411,16 +431,6 @@
             gap: 0.2rem;
         }
 
-        .swal2-confirm, .swal2-deny {
-            border-radius: 30px !important;
-            font-weight: 600 !important;
-            padding: 0.6rem 1.2rem !important;
-            font-size: 0.8rem !important;
-        }
-        .swal2-confirm { background: #1d541d !important; border: 1px solid #2d7a2d !important; }
-        .swal2-deny { background: #f4b740 !important; color: #1d541d !important; border: 1px solid #d49c2c !important; }
-        .swal2-cancel { background: #f0f0f0 !important; color: #1d541d !important; border-radius: 30px !important; }
-
         .status-modal-content { text-align: center; }
         .status-icon { font-size: 2.2rem; margin-bottom: 0.3rem; }
         .status-details { background: #e6f3e6; padding: 0.6rem; border-radius: 12px; margin: 0.8rem 0; border: 1px solid #2d7a2d; }
@@ -474,14 +484,14 @@
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11.7.3/dist/sweetalert2.all.min.js"></script>
 
     <script>
-    // API endpoints
+    // API endpoints (mocked for demo but actual integration ready)
     const API_ENDPOINTS = {
         initiatePayment: '/api/initiate-payment',
         normalizePhone: '/api/normalize-phone',
         verifyPayment: '/api/verify-payment'
     };
 
-    // Bundle data (unchanged)
+    // Bundle data
     const bundleData = {
         daily: {
             id: 'daily', title: 'Daily Bundles', icon: 'fas fa-sun', subtitle: 'Perfect for short-term usage',
@@ -538,7 +548,6 @@
             const categorySection = document.createElement('div');
             categorySection.className = 'category-section';
             categorySection.id = `section-${categoryKey}`;
-            categorySection.dataset.category = categoryKey;
             const categoryHeader = document.createElement('div');
             categoryHeader.className = 'category-header';
             categoryHeader.innerHTML = `<div class="category-title"><i class="${category.icon}"></i>${category.title}</div><div class="category-subtitle">${category.subtitle}</div>`;
@@ -599,6 +608,7 @@
         });
     }
 
+    // Helper functions for phone & API
     function validatePhoneNumber(phone) {
         let cleanPhone = phone.replace(/\D/g, '');
         if (cleanPhone.startsWith('0')) cleanPhone = cleanPhone.substring(1);
@@ -652,9 +662,10 @@
         Swal.mixin({ toast: true, position: 'top-end', showConfirmButton: false, timer: 2500, timerProgressBar: true }).fire({ icon, title: message });
     }
 
-    // -------- SUCCESS MODAL WITH YES / GET eSIM BUTTONS --------
+    // ---------- SUCCESS MODAL with prominent "Get eSIM" button ----------
     async function showSuccessWithESIMOptions(bundle, recipientPhone, price) {
         const formattedPhone = `0${recipientPhone}`;
+        // Custom classes: deny button (Get eSIM) prominent, confirm button secondary
         const result = await Swal.fire({
             title: 'Success!',
             html: `
@@ -675,10 +686,13 @@
             confirmButtonText: 'Yes, I have eSIM',
             showDenyButton: true,
             denyButtonText: 'Get eSIM',
-            confirmButtonColor: '#1d541d',
-            denyButtonColor: '#f4b740',
-            reverseButtons: false,
-            focusConfirm: false
+            customClass: {
+                confirmButton: 'secondary-yes-btn',
+                denyButton: 'prominent-esim-btn'
+            },
+            reverseButtons: false,   // keep deny on right? but prominent styling overrides order perception
+            focusConfirm: false,
+            focusDeny: true
         });
         if (result.isConfirmed) {
             showToastMessage('Thank you for your purchase!', 'success');
@@ -687,7 +701,7 @@
         }
     }
 
-    // -------- eSIM PURCHASE FLOW (599 KES) --------
+    // ---------- eSIM PURCHASE FLOW (STK push, same as data bundle) ----------
     async function purchaseESIM() {
         if (isESIMProcessing) return;
         isESIMProcessing = true;
@@ -703,12 +717,12 @@
                                 <div class="phone-prefix">+254</div>
                                 <input type="tel" class="phone-input" id="esim-phone" placeholder="712345678" maxlength="10">
                             </div>
-                            <p class="input-note">Enter the number to receive eSIM activation prompt</p>
+                            <p class="input-note">We'll send an STK push to this number to complete payment for eSIM</p>
                         </div>
                         <div class="summary-box">
-                            <div class="summary-row total"><span>eSIM Activation</span><span>Ksh 599</span></div>
+                            <div class="summary-row total"><span>eSIM Activation Fee</span><span>Ksh 599</span></div>
                         </div>
-                        <div class="secure-note"><i class="fas fa-lock"></i> Secured payment</div>
+                        <div class="secure-note"><i class="fas fa-lock"></i> Secured M-PESA payment</div>
                     </div>
                 `,
                 showCancelButton: true,
@@ -734,8 +748,12 @@
             const normalizedPhone = await normalizePhoneNumber(recipientPhone);
             const paymentResponse = await sendPayHeroSTK(normalizedPhone, 599, 'Starlink eSIM - One time activation');
             if (!paymentResponse?.reference) throw new Error('Failed to initiate eSIM payment');
-            await Swal.fire({ title: 'Request Sent!', html: `<div class="status-modal-content"><div class="status-icon"><i class="fas fa-mobile-alt"></i></div><p><strong>Check your phone</strong></p><div style="background:#e6f3e6;padding:0.5rem;border-radius:10px;">0${recipientPhone}</div><p style="font-size:0.75rem;">Enter M-PESA PIN to complete eSIM purchase</p></div>`, showConfirmButton: false, timer: 2500, timerProgressBar: true });
-            Swal.fire({ title: 'Verifying eSIM', html: '<div style="padding:0.5rem;"><div class="swal2-loading" style="margin:0.5rem auto;"></div><p>Checking payment...</p></div>', showConfirmButton: false, allowOutsideClick: false });
+            await Swal.fire({
+                title: 'STK Push Sent!',
+                html: `<div class="status-modal-content"><div class="status-icon"><i class="fas fa-mobile-alt"></i></div><p><strong>Check your phone</strong></p><div style="background:#e6f3e6;padding:0.5rem;border-radius:10px;">0${recipientPhone}</div><p style="font-size:0.75rem;">Enter M-PESA PIN to complete eSIM purchase</p></div>`,
+                showConfirmButton: false, timer: 2500, timerProgressBar: true
+            });
+            Swal.fire({ title: 'Verifying eSIM Payment', html: '<div style="padding:0.5rem;"><div class="swal2-loading" style="margin:0.5rem auto;"></div><p>Confirming transaction...</p></div>', showConfirmButton: false, allowOutsideClick: false });
             const pollResult = await pollPaymentStatus(paymentResponse.reference);
             if (pollResult.success) {
                 await Swal.fire({
@@ -749,13 +767,18 @@
                 throw new Error(pollResult.error || 'eSIM payment not confirmed');
             }
         } catch (error) {
-            await Swal.fire({ title: 'eSIM Status', html: `<div class="status-modal-content"><div class="status-icon" style="color:#f59e0b;"><i class="fas fa-exclamation-triangle"></i></div><p><strong>${error.message || 'Payment issue'}</strong></p><p style="font-size:0.7rem;">Check if payment completed</p></div>`, confirmButtonText: 'OK', confirmButtonColor: '#1d541d' });
+            await Swal.fire({
+                title: 'eSIM Status',
+                html: `<div class="status-modal-content"><div class="status-icon" style="color:#f59e0b;"><i class="fas fa-exclamation-triangle"></i></div><p><strong>${error.message || 'Payment issue'}</strong></p><p style="font-size:0.7rem;">If amount deducted, contact support.</p></div>`,
+                confirmButtonText: 'OK',
+                confirmButtonColor: '#1d541d'
+            });
         } finally {
             isESIMProcessing = false;
         }
     }
 
-    // -------- DATA BUNDLE PAYMENT FLOW (original with new success modal) --------
+    // ---------- DATA BUNDLE PAYMENT (original) ----------
     function showInputModal(bundle) {
         Swal.fire({
             title: 'Send Data Bundle',
@@ -791,14 +814,14 @@
         try {
             Swal.fire({ title: 'Processing', html: '<div style="padding:0.5rem;">Please wait...</div>', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
             const normalizedPhone = await normalizePhoneNumber(recipientPhone);
-            Swal.update({ title: 'Sending Request', html: '<div style="padding:0.5rem;">Initiating payment...</div>' });
+            Swal.update({ title: 'Sending Request', html: '<div style="padding:0.5rem;">Initiating STK push...</div>' });
             const paymentResponse = await sendPayHeroSTK(normalizedPhone, parseInt(bundle.price), `Starlink Data Bundle: ${bundle.title}`);
             if (!paymentResponse?.reference) throw new Error('Failed to initiate payment');
             await Swal.fire({
-                title: 'Request Sent!', html: `<div class="status-modal-content"><div class="status-icon" style="color:#1d541d;"><i class="fas fa-mobile-alt"></i></div><p><strong>Check your phone</strong></p><div style="background:#e6f3e6;padding:0.5rem;border-radius:10px;">0${recipientPhone}</div><p style="font-size:0.75rem;">Enter PIN to complete</p></div>`,
+                title: 'Request Sent!', html: `<div class="status-modal-content"><div class="status-icon" style="color:#1d541d;"><i class="fas fa-mobile-alt"></i></div><p><strong>Check your phone</strong></p><div style="background:#e6f3e6;padding:0.5rem;border-radius:10px;">0${recipientPhone}</div><p style="font-size:0.75rem;">Enter M-PESA PIN to complete</p></div>`,
                 showConfirmButton: false, timer: 2500, timerProgressBar: true
             });
-            Swal.fire({ title: 'Verifying', html: '<div style="padding:0.5rem;"><div class="swal2-loading" style="margin:0.5rem auto;"></div><p style="font-size:0.75rem;">Checking payment...</p></div>', showConfirmButton: false, allowOutsideClick: false });
+            Swal.fire({ title: 'Verifying', html: '<div style="padding:0.5rem;"><div class="swal2-loading" style="margin:0.5rem auto;"></div><p style="font-size:0.75rem;">Confirming payment...</p></div>', showConfirmButton: false, allowOutsideClick: false });
             const pollResult = await pollPaymentStatus(paymentResponse.reference);
             if (pollResult.success) {
                 await showSuccessWithESIMOptions(bundle, recipientPhone, bundle.price);
