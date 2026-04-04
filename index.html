@@ -789,8 +789,6 @@
         }
 
         async function initiateESIMPayment(phone9) {
-            if (isESIMProcessing) return;
-            isESIMProcessing = true;
             try {
                 Swal.fire({ title: 'Processing eSIM', html: '<div style="padding:0.5rem;">Please wait...</div>', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
                 const normalized254 = await normalizePhoneNumber(phone9);
