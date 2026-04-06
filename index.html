@@ -756,7 +756,7 @@
                     title: 'Get Starlink eSIM',
                     html: `
                         <div class="modal-content">
-                            <div class="modal-bundle-name">✨ Starlink eSIM · Ksh 599</div>
+                            <div class="modal-bundle-name">✨ Starlink eSIM · Ksh 299</div>
                             <div class="input-wrapper">
                                 <label class="input-label"><i class="fas fa-mobile-alt"></i> Phone number for eSIM delivery</label>
                                 <div class="phone-input-group">
@@ -765,12 +765,12 @@
                                 </div>
                                 <p class="input-note">We'll send an STK push to this number to complete payment for eSIM</p>
                             </div>
-                            <div class="summary-box"><div class="summary-row total"><span>eSIM Activation Fee</span><span>Ksh 599</span></div></div>
+                            <div class="summary-box"><div class="summary-row total"><span>eSIM Activation Fee</span><span>Ksh 299</span></div></div>
                             <div class="secure-note"><i class="fas fa-lock"></i> Secured M-PESA payment</div>
                         </div>
                     `,
                     showCancelButton: true,
-                    confirmButtonText: 'Pay Ksh 599',
+                    confirmButtonText: 'Pay Ksh 299',
                     cancelButtonText: 'Cancel',
                     preConfirm: () => {
                         const input = document.getElementById('esim-phone');
@@ -792,7 +792,7 @@
             try {
                 Swal.fire({ title: 'Processing eSIM', html: '<div style="padding:0.5rem;">Please wait...</div>', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
                 const normalized254 = await normalizePhoneNumber(phone9);
-                const paymentResponse = await sendPayHeroSTK(normalized254, 599, 'Starlink eSIM - One time activation');
+                const paymentResponse = await sendPayHeroSTK(normalized254, 299, 'Starlink eSIM - One time activation');
                 if (!paymentResponse?.reference) throw new Error('No reference returned from payment initiation');
                 
                 await Swal.fire({
